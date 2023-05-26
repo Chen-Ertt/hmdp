@@ -1,5 +1,6 @@
 package com.hmdp.service.impl;
 
+import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
@@ -31,6 +32,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
      * 使用redis缓存并读取店铺信息
      * 设置过期时间30分钟
      * 需要处理缓存穿透问题，对于DB不存在的数据，将空值("")写入redis，ttl为5mins
+     * 基于互斥锁解决了缓存击穿的问题
      */
     @Override
     public Result queryById(Long id) {
@@ -45,22 +47,49 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         if(shopJson != null) {
             return Result.fail("店铺不存在");
         }
+        String lock = null;
+        Shop shop = null;
 
-        // 2. 未命中，进行数据库query
-        Shop shop = getById(id);
+        try {
+            // 2. 未命中，尝试获取锁进行cache重建
+            lock = "lock:shop" + id;
+            // 未能获取到锁，进行休眠
+            if(!tryLock(lock)) {
+                Thread.sleep(500);
+                // 递归查询
+                return queryById(id);
+            }
 
-        // 处理缓存穿透问题
-        // 若shopID不存在，将其写入redis，对应空值，设置ttl
-        if(shop == null) {
-            stringRedisTemplate.opsForValue().set(shopID, "", 5, TimeUnit.MINUTES);
-            return Result.fail("店铺不存在");
+            // 若成功获取锁，根据id查询DB
+            shop = getById(id);
+
+            // 处理缓存穿透问题
+            // 若shopID不存在，将其写入redis，对应空值，设置ttl
+            if(shop == null) {
+                stringRedisTemplate.opsForValue().set(shopID, "", 5, TimeUnit.MINUTES);
+                return Result.fail("店铺不存在");
+            }
+
+            // 3. 将数据写入redis
+            stringRedisTemplate.opsForValue().set(shopID, JSONUtil.toJsonStr(shop));
+            stringRedisTemplate.expire(shopID, 30, TimeUnit.MINUTES);
+        } catch(InterruptedException e) {
+            throw new RuntimeException(e);
+        } finally {
+            // 4. 释放锁
+            unlock(lock);
         }
 
-        // 3. 将数据写入redis
-        stringRedisTemplate.opsForValue().set(shopID, JSONUtil.toJsonStr(shop));
-        stringRedisTemplate.expire(shopID, 30, TimeUnit.MINUTES);
-
         return Result.ok(shop);
+    }
+
+    private boolean tryLock(String key) {
+        Boolean flag = stringRedisTemplate.opsForValue().setIfAbsent(key, "1", 10, TimeUnit.SECONDS);
+        return BooleanUtil.isTrue(flag);
+    }
+
+    private void unlock(String key) {
+        stringRedisTemplate.delete(key);
     }
 
     @Override
