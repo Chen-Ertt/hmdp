@@ -2,6 +2,7 @@ package com.hmdp.service.impl;
 
 import cn.hutool.core.util.BooleanUtil;
 import cn.hutool.core.util.StrUtil;
+import cn.hutool.json.JSONObject;
 import cn.hutool.json.JSONUtil;
 import com.baomidou.mybatisplus.extension.service.impl.ServiceImpl;
 import com.hmdp.dto.RedisDataDTO;
@@ -117,8 +118,8 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         }
 
         // 2. 获取逻辑时间，判断是否过期
-        RedisDataDTO<Shop> redisData = JSONUtil.toBean(shopJson, RedisDataDTO.class);
-        Shop shop = redisData.getData();
+        RedisDataDTO redisData = JSONUtil.toBean(shopJson, RedisDataDTO.class);
+        Shop shop = JSONUtil.toBean((JSONObject) redisData.getData(), Shop.class);
         LocalDateTime exprireTime = redisData.getExprireTime();
         // 未过期，直接返回
         if(exprireTime.isAfter(LocalDateTime.now())) {
@@ -151,7 +152,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
     public void saveShop2Redis(Long id, Long minutes) {
         Shop shop = getById(id);
         RedisDataDTO<Shop> redisShop = new RedisDataDTO<>(LocalDateTime.now().plusMinutes(minutes), shop);
-        String shopID = "hmdp:shop:" + id.toString();
+        String shopID = "hmdp:shop:cache:" + id.toString();
         stringRedisTemplate.opsForValue().set(shopID, JSONUtil.toJsonStr(redisShop));
     }
 
@@ -174,7 +175,7 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         // 1. 更新数据库
         updateById(shop);
         // 2. 删除缓存
-        String shopID = "hmdp:shop:cache:" + id;
+        String shopID = "hmdp:shop" + id;
         stringRedisTemplate.delete(shopID);
         // 不需要更新缓存，等到读操作再更新
 
