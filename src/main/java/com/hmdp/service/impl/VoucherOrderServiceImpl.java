@@ -8,8 +8,10 @@ import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIDWorker;
+import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.jetbrains.annotations.NotNull;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -30,6 +32,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private ISeckillVoucherService seckillVoucherService;
 
+    @Resource
+    private StringRedisTemplate stringRedisTemplate;
+
+
     // 注入自己，是@Transactional能够生效
     @Resource
     private VoucherOrderServiceImpl voucherOrderService;
@@ -39,9 +45,10 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     private RedisIDWorker redisIDWorker;
 
     /**
-     * 基于乐观锁实现防止超卖问题
-     * 使用库存stock作为version code
-     * 将上锁转移给mysql（行锁）
+     * 使用Redis分布式锁处理一人一单、解决炒卖问题
+     * 并解决锁误删问题：在unlock前判断value
+     * 1. 基于setnx中value为线程ID，但在分布式情况下，不同JVM可能会出现重复，不可行
+     * 2. 使用UUID作为value
      */
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -65,13 +72,18 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
             return Result.fail("库存不足~");
         }
 
-        // 对用户加锁：
-        // 所有用户用同一把锁，效率过低
-        // 对方法加锁：
-        // 考虑到先释放锁，后提交事务，会导致数据未被commit前，其他线程获取到锁，因此需要对整个方法加锁
+        // 对用户加锁
         Long userID = UserHolder.getUser().getId();
-        synchronized(userID.toString().intern()) {
+        SimpleRedisLock lock = new SimpleRedisLock("order:" + userID, stringRedisTemplate);
+        boolean isLock = lock.tryLock(1200);
+        if(!isLock) {
+            return Result.fail("不允许重复下单");
+        }
+        try {
             return voucherOrderService.createVoucherOrder(voucherId);
+        } finally {
+            // value为UUID，在unlock前进行判断（封装在unlock()中）
+            lock.unlock();
         }
     }
 
