@@ -152,6 +152,7 @@ public class CacheClient {
     private static final ExecutorService cache_rebuild = Executors.newCachedThreadPool();
 
     /**
+     * 预热，向redis提前插入
      * 指定shop和逻辑过期时间
      * 向redis存入该shop
      */

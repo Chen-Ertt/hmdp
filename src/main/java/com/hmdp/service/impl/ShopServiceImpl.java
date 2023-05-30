@@ -46,6 +46,10 @@ public class ShopServiceImpl extends ServiceImpl<ShopMapper, Shop> implements IS
         return Result.ok(shop);
     }
 
+
+    /**
+     * 先更新DB，后删除Cache，不需要更新cache
+     */
     @Override
     @Transactional
     public Result updateShop(Shop shop) {

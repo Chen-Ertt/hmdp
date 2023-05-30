@@ -7,6 +7,7 @@ import com.hmdp.service.IVoucherService;
 import org.springframework.web.bind.annotation.*;
 
 import javax.annotation.Resource;
+import java.time.LocalDateTime;
 
 /**
  * <p>
@@ -30,6 +31,9 @@ public class VoucherController {
      */
     @PostMapping
     public Result addVoucher(@RequestBody Voucher voucher) {
+        // 设置优惠券时间
+        voucher.setBeginTime(LocalDateTime.now());
+        voucher.setEndTime(LocalDateTime.now().plusHours(6L));
         voucherService.save(voucher);
         return Result.ok(voucher.getId());
     }
@@ -41,6 +45,9 @@ public class VoucherController {
      */
     @PostMapping("seckill")
     public Result addSeckillVoucher(@RequestBody Voucher voucher) {
+        // 设置优惠券时间
+        voucher.setBeginTime(LocalDateTime.now());
+        voucher.setEndTime(LocalDateTime.now().plusHours(6L));
         voucherService.addSeckillVoucher(voucher);
         return Result.ok(voucher.getId());
     }
