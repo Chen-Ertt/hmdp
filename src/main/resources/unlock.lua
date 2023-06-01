@@ -10,8 +10,7 @@ local threadID = ARGV[1]
 -- 获取锁的value（线程ID）
 local id = redis.call("get", key)
 
-if(id == threadID)
-then
-return redis.call("del", key)
+if(id == threadID) then
+    return redis.call("del", key)
 end
 return 0

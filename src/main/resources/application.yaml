@@ -20,6 +20,8 @@ spring:
         time-between-eviction-runs: 10s
   jackson:
     default-property-inclusion: non_null
+  main:
+    allow-circular-references: true
 mybatis-plus:
   type-aliases-package: com.hmdp.entity
 logging:

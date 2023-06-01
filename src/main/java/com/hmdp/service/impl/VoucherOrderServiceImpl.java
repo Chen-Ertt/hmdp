@@ -8,9 +8,10 @@ import com.hmdp.mapper.VoucherOrderMapper;
 import com.hmdp.service.ISeckillVoucherService;
 import com.hmdp.service.IVoucherOrderService;
 import com.hmdp.utils.RedisIDWorker;
-import com.hmdp.utils.SimpleRedisLock;
 import com.hmdp.utils.UserHolder;
 import org.jetbrains.annotations.NotNull;
+import org.redisson.api.RLock;
+import org.redisson.api.RedissonClient;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,11 +45,12 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
     @Resource
     private RedisIDWorker redisIDWorker;
 
+    @Resource
+    RedissonClient redissonClient;
+
     /**
-     * 使用Redis分布式锁处理一人一单、解决炒卖问题
+     * 使用Redisson分布式锁（可重入锁）处理一人一单、解决炒卖问题
      * 并解决锁误删问题：在unlock前判断value
-     * 1. 基于setnx中value为线程ID，但在分布式情况下，不同JVM可能会出现重复，不可行
-     * 2. 使用UUID作为value
      */
     @Override
     public Result seckillVoucher(Long voucherId) {
@@ -74,8 +76,11 @@ public class VoucherOrderServiceImpl extends ServiceImpl<VoucherOrderMapper, Vou
 
         // 对用户加锁
         Long userID = UserHolder.getUser().getId();
-        SimpleRedisLock lock = new SimpleRedisLock("order:" + userID, stringRedisTemplate);
-        boolean isLock = lock.tryLock(1200);
+        // SimpleRedisLock lock = new SimpleRedisLock("order:" + userID, stringRedisTemplate);
+        // 使用Redisson，此处的锁为可重入锁
+        RLock lock = redissonClient.getLock("order:" + userID);
+        // 注意参数
+        boolean isLock = lock.tryLock();
         if(!isLock) {
             return Result.fail("不允许重复下单");
         }

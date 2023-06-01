@@ -9,7 +9,6 @@ import org.springframework.data.redis.core.script.DefaultRedisScript;
 import java.util.Collections;
 import java.util.concurrent.TimeUnit;
 
-
 /**
  * 这个Redis锁的实现类不交由Spring管理
  * 因为需要该Util类的复用，也就是每一个线程使用不同的该类的对象
@@ -26,9 +25,11 @@ public class SimpleRedisLock implements ILock {
 
     // 提前初始化lua脚本
     private static final DefaultRedisScript<Long> UNLOCK_SCRIPT;
+
     static {
         UNLOCK_SCRIPT = new DefaultRedisScript<>();
         UNLOCK_SCRIPT.setLocation(new ClassPathResource("unlock.lua"));
+        UNLOCK_SCRIPT.setResultType(Long.class);
     }
 
     public SimpleRedisLock(String name, StringRedisTemplate stringRedisTemplate) {
